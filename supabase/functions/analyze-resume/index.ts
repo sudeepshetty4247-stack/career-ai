@@ -76,52 +76,43 @@ serve(async (req) => {
       );
     }
 
-    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
-    if (!GEMINI_API_KEY) {
-      throw new Error("GEMINI_API_KEY not configured");
+    const HF_API_KEY = Deno.env.get("HF_API_KEY");
+    if (!HF_API_KEY) {
+      throw new Error("HF_API_KEY not configured");
     }
 
-    const geminiResponse = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+    const response = await fetch(
+      "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2",
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Authorization": `Bearer ${HF_API_KEY}`,
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
-          contents: [
-            {
-              role: "user",
-              parts: [
-                { text: systemPrompt },
-                { text: `RESUME:\n${resumeText}` },
-              ],
-            },
-          ],
-          generationConfig: {
-            temperature: 0.4,
-            maxOutputTokens: 2000,
-          },
+          inputs: `${systemPrompt}\n\nRESUME:\n${resumeText}`,
+          options: { wait_for_model: true },
         }),
       }
     );
 
-    if (!geminiResponse.ok) {
-      const err = await geminiResponse.text();
-      console.error("Gemini error:", err);
-      throw new Error("Gemini API failed");
+    if (!response.ok) {
+      const err = await response.text();
+      console.error("Hugging Face error:", err);
+      throw new Error("Hugging Face API failed");
     }
 
-    const data = await geminiResponse.json();
+    const data = await response.json();
 
-    const content =
-      data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    // Hugging Face returns text output
+    const outputText =
+      data?.[0]?.generated_text ||
+      data?.generated_text ||
+      JSON.stringify(data);
 
-    if (!content) {
-      throw new Error("Empty Gemini response");
-    }
-
-    // Extract JSON safely (handles ```json blocks)
-    let jsonText = content;
-    const match = content.match(/```json([\s\S]*?)```/);
+    // Extract JSON safely
+    let jsonText = outputText;
+    const match = outputText.match(/```json([\s\S]*?)```/);
     if (match) {
       jsonText = match[1].trim();
     }
